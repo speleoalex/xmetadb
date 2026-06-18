@@ -1,5 +1,5 @@
 <?php
-include_once __DIR__ . "/xmetadb/XMETATable.php";
+include_once __DIR__ . "/XMETATable.php";
 
 /**
  * @author Alessandro Vernassa <speleoalex@gmail.com>
@@ -8,9 +8,7 @@ include_once __DIR__ . "/xmetadb/XMETATable.php";
  * @package xmetadb
  *
  */
-//-----PARSER XML -----
-// TODO:
-// LA PRIMARYKEY DEVE ESSERE SEMPRE IL PRIMO CAMPO DEL DESCRITTORE
+// TODO: the primary key must always be the first field in the descriptor
 define("_MAX_FILE_ACCESS_ATTEMPTS", "1000");
 define("_MAX_FILES_PER_FOLDER", "10000");
 define("_MAX_LOCK_TIME", "30"); // seconds
@@ -38,42 +36,40 @@ function removePhpTags($inputString)
 
 function xmetadb_xml2array($data, $elem, $fields = false)
 {
-    //eliminazione dei commenti
-    if (!isset($data[2]) && $data[2] != "x")
-    {
-        return json_decode(removePhpTags($data));
+    // If data is not XML (doesn't start with "<?x"), try JSON decode first.
+    // Falls through to XML parsing when json_decode returns null.
+    if (!isset($data[2]) || $data[2] !== 'x') {
+        $decoded = json_decode(removePhpTags($data), true);
+        if ($decoded !== null) {
+            return $decoded;
+        }
     }
     $data = xmetadb_removexmlcomments($data);
-    //visualizza solo determinati campi
     if (is_array($fields))
     {
         $fields = implode("|", $fields);
     }
     $out = "";
     $ret = null;
-    if (preg_match("/<$elem>.*<$elem>[^<]+<\/$elem>/s", $data)) //se il nome del nodo contiene un elemento con lo stesso nome
+    if (preg_match("/<$elem>.*<$elem>[^<]+<\/$elem>/s", $data))
     {
-        preg_match_all("#<$elem>(.*?<$elem>.*?</$elem>.*?)</$elem>#s", $data, $out); //CONTIENE ALL'INTERNO UN NODO CON LO STESSO NOME
+        preg_match_all("#<$elem>(.*?<$elem>.*?</$elem>.*?)</$elem>#s", $data, $out);
     }
     else
     {
-        preg_match_all("#<$elem>.*?</$elem>#s", $data, $out); //OK
+        preg_match_all("#<$elem>.*?</$elem>#s", $data, $out);
     }
     if (is_array($out[0]))
         foreach ($out[0] as $innerxml)
         {
-            //----------metodo 0 ------------------------
-            for ($oi = 0; $oi < 1; $oi++)
+            $tmp2 = $t1 = null;
+            preg_match_all('/<(' . $fields . '[^\/]*?)>([^<]*)<\/\1>/s', $innerxml, $t1);
+            foreach ($t1[1] as $k => $tt)
             {
-                $tmp2 = $t1 = null;
-                preg_match_all('/<(' . $fields . '[^\/]*?)>([^<]*)<\/\1>/s', $innerxml, $t1);
-                foreach ($t1[1] as $k => $tt)
-                {
-                    if ($t1[2][$k] != null)
-                        $tmp2[$tt] = xmldec($t1[2][$k]);
-                    else
-                        $tmp2[$tt] = "";
-                }
+                if ($t1[2][$k] != null)
+                    $tmp2[$tt] = xmldec($t1[2][$k]);
+                else
+                    $tmp2[$tt] = "";
             }
             if ($tmp2 != null)
             {
@@ -86,7 +82,7 @@ function xmetadb_xml2array($data, $elem, $fields = false)
 
 /**
  * xmetadb_readDatabase
- * legge un file xml e restituisce un array
+ * Reads an XML file and returns an array.
  * <db>
  * <elem>
  * <pippo>1</pippo>
@@ -99,31 +95,29 @@ function xmetadb_xml2array($data, $elem, $fields = false)
  * </db>
  *
  * xmetadb_readDatabase($filename,"elem")
- * ritorna:
+ * returns:
  *
  * $ret[0]['pippo']=1
  * $ret[0]['pluto']=1
  * $ret[1]['pippo']=2
  * $ret[1]['pluto']=2
  *
- * oppure null se non e' stato possibile leggere il file
+ * or null if the file could not be read
  *
- * @todo Da risolvere il problema che avviene
- * nel caso un campo abbia lo steso nome della tebella !!!!
- *
+ * @todo Fix the issue when a field has the same name as the table.
  *
  * */
 function xmetadb_readDatabase($filename, $elem, $fields = false, $usecache = true)
 {
     if (!file_exists($filename))
         return false;
-    $_fields = "_" . $fields;
+    $_fields = "_" . (is_array($fields) ? implode(",", $fields) : $fields);
     static $cache = array();
     static $lastmod = array();
     $filename = realpath($filename);
-    if (!isset($lastmod[$filename]) || $lastmod[$filename] != filectime($filename) . filesize($filename))
+    if (!isset($lastmod[$filename]) || $lastmod[$filename] != filemtime($filename) . filesize($filename))
     {
-        $lastmod[$filename] = filectime($filename) . filesize($filename);
+        $lastmod[$filename] = filemtime($filename) . filesize($filename);
         $usecache = false;
     }
     if (is_dir($filename))
@@ -146,7 +140,7 @@ function xmetadb_readDatabase($filename, $elem, $fields = false, $usecache = tru
         return $cache[$filename][$_fields][$elem];
     }
     $tmp = array();
-    // --- gestione xml in più files --------->
+    // --- xml split across multiple files --------->
     if (is_dir($filename))
     {
         $data = null;
@@ -164,17 +158,8 @@ function xmetadb_readDatabase($filename, $elem, $fields = false, $usecache = tru
         $cache[$filename][$_fields][$elem] = $tmp;
         return $tmp;
     }
-    //<--------- gestione xml in piu' files ---
-    //tenta di accedere al file
-    for ($i = 0; $i < _MAX_FILE_ACCESS_ATTEMPTS; $i++)
-    {
-        $data = file_get_contents($filename);
-        // funziona ma sarebbe da verificare la chiusura di </database>
-        if ("" != $data)
-        {
-            break;
-        }
-    }
+    //<--------- xml split across multiple files ---
+    $data = file_get_contents($filename);
     //da xml ad array....
     $ret = xmetadb_xml2array($data, $elem, $fields); //null if data = ""
     //echo "fname=$filename";
@@ -185,13 +170,12 @@ function xmetadb_readDatabase($filename, $elem, $fields = false, $usecache = tru
 /**
  * xmlenc
  *
- * codifica i dati per inserirli tra i tag xml
+ * Encodes data for insertion between XML tags.
  * @param string $str
- * @return stringa codificata
+ * @return string encoded string
  */
-function xmlenc($str, $charset = "ISO-8859-1")
+function xmlenc($str)
 {
-    //return htmlentities ( $str, ENT_QUOTES, "ISO-8859-1" );
     $str = str_replace("&", "&amp;", $str);
     $str = str_replace("<", "&lt;", $str);
     $str = str_replace(">", "&gt;", $str);
@@ -201,15 +185,14 @@ function xmlenc($str, $charset = "ISO-8859-1")
 /**
  * xmldec
  *
- * decodifica i dati inseriti tra i tag xml
+ * Decodes data extracted from between XML tags.
  * @param string $str
- * @return stringa codificata
+ * @return string decoded string
  */
-function xmldec($str, $charset = "ISO-8859-1")
+function xmldec($str)
 {
     if (!is_string($str))
         return "";
-    //return html_entity_decode($str, ENT_QUOTES, $charset);
     $str = str_replace("&gt;", ">", $str);
     $str = str_replace("&lt;", "<", $str);
     $str = str_replace("&amp;", "&", $str);
@@ -218,11 +201,9 @@ function xmldec($str, $charset = "ISO-8859-1")
 
 /**
  * xmetadb_create_thumb
- * Crea l' anteprima di un file
- * uso questa funzione per crearmi le anteprime per i campi di tipo immagine
- * occorrono le librerie GD
- * @param string $filename nome del file
- * @param int $max dimensione massima anteprima
+ * Creates a file thumbnail for image-type fields. Requires the GD library.
+ * @param string $filename file name
+ * @param int $max maximum thumbnail size
  */
 function xmetadb_create_thumb($filename, $max, $max_h = "", $max_w = "")
 {
@@ -346,7 +327,6 @@ function xmetadb_create_thumb($filename, $max, $max_h = "", $max_w = "")
     imagecopyresampled($thumb, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
     // Output
     $file_to_open = $file_thumb;
-    //forzo estensione jpg
     imagejpeg($thumb, $file_to_open . ".jpg");
 }
 
@@ -357,7 +337,6 @@ function xmetadb_create_thumb($filename, $max, $max_h = "", $max_w = "")
  */
 function xmetadb_ImageCreateFromBMP($filename)
 {
-    //Ouverture du fichier en mode binaire
     if (!$f1 = fopen($filename, "rb"))
         return FALSE;
     $FILE = unpack("vfile_type/Vfile_size/Vreserved/Vbitmap_offset", fread($f1, 14));
@@ -446,10 +425,10 @@ function xmetadb_ImageCreateFromBMP($filename)
 
 /**
  * xmetadb_removexmlcomments
- * rimuove i commenti da un file xml
+ * Removes comments and processing instructions from XML data.
  *
  * @param string $data
- * @return string xml privo di commenti
+ * @return string XML with comments removed
  *
  */
 function xmetadb_removexmlcomments($data)
@@ -459,20 +438,18 @@ function xmetadb_removexmlcomments($data)
     return $data;
 }
 
-//-------------------------FUNZIONI DI CREAZIONE/MODIFICA DATABASE----------------
+//-------------------------DATABASE CREATION/MODIFICATION FUNCTIONS----------------
 /**
  * XMETATable::createMetadbTable
  *
- * crea una nuova tabella xml
- * @param string nome database
- * @param string nome tabella
- * @param array campi
- * @param string path dei databases
- * @param misc $singlefilename se su un solo file specificarne il nome, se su database
- * mettere la connessione di tipo array(host=>'' user=>'' password=>'')
+ * Creates a new XML table.
+ * @param string $databasename database name
+ * @param string $tablename table name
+ * @param array $fields field definitions
+ * @param string $path database path
+ * @param mixed $singlefilename single-file name, or false for directory-based storage
  *
- *
- * -- ESEMPIO : --
+ * -- EXAMPLE : --
  * $fields[0]['name']="id";
  * $fields[0]['primarykey']=1;
  * $fields[0]['defaultvalue']=null;
@@ -490,11 +467,11 @@ function createxmltable($databasename, $tablename, $fields, $path = ".", $single
 
 /**
  * XMETATable::createMetadbDatabase
- * crea un database
+ * Creates a database directory.
  *
  * @param string $databasename
  * @param string $path
- * @return false se il databare e'stato creato oppure una stringa che contiene l' errore
+ * @return false on success, or an error string on failure
  */
 function createxmldatabase($databasename, $path = ".")
 {
@@ -503,7 +480,7 @@ function createxmldatabase($databasename, $path = ".")
 
 /**
  * XMETATable::meteDatabaseExists
- * verifica se un database esiste
+ * Checks whether a database exists.
  *
  * @param string $databasename
  * @param string $path
@@ -543,7 +520,7 @@ function addxmltablefield($databasename, $tablename, $field, $path = ".", $force
     if (!file_exists($old))
         return null;
     $readok = false;
-    for ($i = 0; $i < _MAX_FILE_ACCESS_ATTEMPTS; $i++)
+    for ($i = 0; $i < 3; $i++)
     {
         $oldfilestring = file_get_contents($old);
         if (strpos($oldfilestring, "</tables>") !== false)
@@ -551,10 +528,11 @@ function addxmltablefield($databasename, $tablename, $field, $path = ".", $force
             $readok = true;
             break;
         }
+        if ($i < 2) usleep(5000);
     }
     if (!$readok)
     {
-        die("error update");
+        return "error: could not read descriptor file";
     }
     $oldfilestring = xmetadb_removexmlcomments($oldfilestring);
     $oldvalues = $newvalues = getxmltablefield($databasename, $tablename, $field['name'], $path);
@@ -563,7 +541,6 @@ function addxmltablefield($databasename, $tablename, $field, $path = ".", $force
 
         $newvalues[$key] = $value;
     }
-    //compongo il nuovo xml per il record da aggiornare
     $strnew = "<field>";
     foreach ($newvalues as $key => $value)
     {
@@ -586,13 +563,13 @@ function addxmltablefield($databasename, $tablename, $field, $path = ".", $force
         {
             $handle = fopen($old, "w");
             fwrite($handle, $newfilestring);
-            xmetadb_readDatabase($old, 'field', false, false); //aggiorna la cache
+            xmetadb_readDatabase($old, 'field', false, false); // refresh cache
         }
         return $newvalues;
     }
     else // new field
     {
-        for ($i = 0; $i < _MAX_FILE_ACCESS_ATTEMPTS; $i++)
+        for ($i = 0; $i < 3; $i++)
         {
             $oldfilestring = file_get_contents("$path/$databasename/$tablename.php");
             if (strpos($oldfilestring, "</tables>") !== false)
@@ -610,19 +587,19 @@ function addxmltablefield($databasename, $tablename, $field, $path = ".", $force
         $handle = fopen("$path/$databasename/$tablename.php", "w");
         fwrite($handle, $newfilestring);
         fclose($handle);
-        xmetadb_readDatabase($old, 'field', false, false); //aggiorna la cache
+        xmetadb_readDatabase($old, 'field', false, false); // refresh cache
         return $newvalues;
     }
 }
 
 /**
  * getxmltablefield
- * ritorna tutte le proprieta' di un campo di una tabella xml
+ * Returns all properties of a field in an XML table.
  *
- * @param string databasename
- * @param string tablename
- * @param string fieldname
- * @param string path
+ * @param string $databasename
+ * @param string $tablename
+ * @param string $fieldname
+ * @param string $path
  */
 function getxmltablefield($databasename, $tablename, $fieldname, $path = ".")
 {
@@ -648,7 +625,8 @@ function getxmltablefield($databasename, $tablename, $fieldname, $path = ".")
  * */
 function xmetadb_remove_dir_rec($dirtodelete)
 {
-    if (strpos($dirtodelete, "../") !== false)
+    // Reject path traversal attempts in all common forms and null-byte injection.
+    if (strpos($dirtodelete, '..') !== false || strpos($dirtodelete, "\0") !== false)
         die("xmetadberror:xmetadb_remove_dir_rec");
     if (false != ($objs = glob($dirtodelete . "/.*")))
     {
@@ -690,29 +668,9 @@ function xmetadb_encode_preg_replace2nd($str)
     return $str;
 }
 
-/**
- * xmetadb_encode_preg_replace2nd
- * prepara la stringa per il primo parametro
- * dell' preg_replace aggiungendo
- * la barra davanti ai cratteri speciali
- *
- *
- */
 function xmetadb_encode_preg($str)
 {
-    $str = str_replace('\\', '\\\\', $str);
-    $str = str_replace('/', '\\/', $str);
-    $str = str_replace('(', '\\(', $str);
-    $str = str_replace(')', '\\)', $str);
-    $str = str_replace('^', '\\^', $str);
-    $str = str_replace('$', '\\$', $str);
-    $str = str_replace('*', '\\*', $str);
-    $str = str_replace('+', '\\+', $str);
-    $str = str_replace('?', '\\?', $str);
-    $str = str_replace('[', '\\[', $str);
-    $str = str_replace(']', '\\]', $str);
-    $str = str_replace('|', '\\|', $str);
-    return $str;
+    return preg_quote($str, '/');
 }
 
 /**
@@ -727,17 +685,13 @@ function xmetadb_encode_preg($str)
  */
 function get_xml_single_element($elem, $xml)
 {
-    $xml = xmetadb_removexmlcomments($xml);
-    $buff = preg_replace("/.*<" . $elem . ">/s", "", $xml);
+    $xml  = xmetadb_removexmlcomments($xml);
+    $safe = preg_quote($elem, '/');
+    $buff = preg_replace("/.*<" . $safe . ">/s", "", $xml);
     if ($buff == $xml)
         return "";
-    $buff = preg_replace("/<\/" . $elem . ">.*/s", "", $buff);
+    $buff = preg_replace("/<\/" . $safe . ">.*/s", "", $buff);
     return $buff;
-}
-
-function xmetadb_get_xml_single_element($elem, $xml)
-{
-    return get_xml_single_element($elem, $xml);
 }
 
 /**
@@ -843,38 +797,17 @@ function xmetadb_array_natsort_by_key($data, $order, $desc = false)
     return $data;
 }
 
-/*
-  $test[]=array("name"=>1,"name2"=>"1","name3"=>12);
-  $test[]=array("name"=>1,"name2"=>"2","name3"=>12);
-  $test[]=array("name"=>2,"name2"=>"2","name3"=>10);
-  $test[]=array("name"=>2,"name2"=>"1","name3"=>14);
-  $test[]=array("name"=>3,"name2"=>"4","name3"=>22);
-  $test[]=array("name"=>4,"name2"=>"5","name3"=>1);
-  $test[]=array("name"=>5,"name2"=>"6","name3"=>5);
-  $test[]=array("name"=>6,"name2"=>"7","name3"=>1);
-  $test[]=array("name"=>7,"name2"=>"8","name3"=>5);
-  $test[]=array("name"=>8,"name2"=>"9","name3"=>66);
-  $test[]=array("name"=>9,"name2"=>"10","name3"=>21);
-  //$test2 = xmetadb_array_sort_by_key($test,"name2:asc,name:desc");
-  $test2=xmetadb_array_natsort_by_key($test,"name:asc,name2:asc");
-
-
-  dprint_r($test2);
-  die();
- */
-
 /**
- *
  * @param string $a
  * @param string $b
- * @return int 
+ * @return int
  */
 function xmetadb_NatSort_callback($a, $b)
 {
     $a = strtolower($a);
     $b = strtolower($b);
     //if ( fn_erg("^[0-9]", $a) && fn_erg("^[0-9]", $b) )
-    if (preg_match("/" . str_replace('/', '\\/', "^[0-9]") . "/s", $a, $regs) && preg_match("/" . str_replace('/', '\\/', "^[0-9]") . "/s", $b, $regs))
+    if (preg_match("/^[0-9]/", $a) && preg_match("/^[0-9]/", $b))
     {
         $aa = explode("_", $a);
         $bb = explode("_", $b);

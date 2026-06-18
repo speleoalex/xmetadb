@@ -98,7 +98,13 @@ class XMETATable extends stdClass
         {
             return new XMETATable($databasename, $tablename, $path, $params);
         }
-        $assoc = is_array($params) ? md5(serialize(ksort($params))) : "";
+        if (is_array($params) && !empty($params)) {
+            $sorted = $params;
+            ksort($sorted);
+            $assoc = md5(serialize($sorted));
+        } else {
+            $assoc = "";
+        }
         $id = "$databasename," . $tablename . ",$path;" . $assoc;
         if (!isset($tables[$id]))
         {
@@ -131,7 +137,7 @@ class XMETATable extends stdClass
             $str .= "\n\t<field>";
             foreach ($field as $key => $value)
             {
-                $str .= "\n\t\t<$key>$value</$key>";
+                $str .= "\n\t\t<$key>" . xmlenc($value) . "</$key>";
             }
             $str .= "\n\t</field>";
         }
@@ -146,7 +152,7 @@ class XMETATable extends stdClass
             }
             else
             {
-                $str .= "\n<filename>$singlefilename</filename>";
+                $str .= "\n<filename>" . xmlenc($singlefilename) . "</filename>";
             }
         }
         $str .= "\n</tables>";
@@ -186,11 +192,6 @@ class XMETATable extends stdClass
         $this->xmltagroot = $this->databasename;
         $this->pathdata = "";
         $this->params = array();
-        if (!empty($params['default_database_driver']))
-        {
-            $this->defaultdriver = $params['default_database_driver'];
-        }
-
         if (!empty($params['default_database_driver']))
         {
             $this->defaultdriver = $params['default_database_driver'];
@@ -264,7 +265,7 @@ class XMETATable extends stdClass
         }
         $this->datafile = $this->path . "/" . $this->databasename . "/" . $this->tablename . "/";
         $this->xmlfieldname = $this->tablename;
-        // cerca la chiave primaria
+        // find the primary key
         $this->primarykey = array();
         foreach ($fields as $field)
         {
@@ -301,7 +302,7 @@ class XMETATable extends stdClass
     function setDriver($drivertype = "")
     {
         $this->driver = $drivertype;
-        //modalita' database---->
+        // database mode ---->
         if (!$this->driver)
         {
             $this->driver = get_xml_single_element("driver", $this->xmldescriptor);
@@ -336,9 +337,12 @@ class XMETATable extends stdClass
 
     function sendFileToClient()
     {
-        $unirecid = FN_GetParam("id", $_REQUEST);
-        $recordkey = FN_GetParam("recordkey", $_REQUEST);
-        $uid = FN_GetParam("uid", $_REQUEST);
+        // Sanitize path-sensitive parameters from user input before any filesystem use.
+        // $unirecid: record primary key used as directory name — allow safe chars only.
+        // $recordkey: field name used as directory name — word chars only.
+        $unirecid   = preg_replace('/[^a-zA-Z0-9._\-]/', '', (string)FN_GetParam("id", $_REQUEST));
+        $recordkey  = preg_replace('/[^a-zA-Z0-9_]/', '',  (string)FN_GetParam("recordkey", $_REQUEST));
+        $uid        = FN_GetParam("uid", $_REQUEST);
         $xmetadbgetfile = FN_GetParam("xmetadbgetfile", $_REQUEST);
         if (!$xmetadbgetfile || $recordkey == "" || $uid == "" || $unirecid === "")
         {
@@ -406,7 +410,6 @@ class XMETATable extends stdClass
     function getThumbPath($recordvalues, $recordkey)
     {
         $databasename = $this->databasename;
-        $tablename = $this->tablename;
         $path = realpath($this->path);
         $ret = "";
         $unirecid = $recordvalues[$this->primarykey];
@@ -421,55 +424,34 @@ class XMETATable extends stdClass
         return $this->getFilePath($recordvalues, $recordkey);
     }
 
-    //-----metodi del driver---------------->
+    //-----driver methods---------------->
+
+    private function _buildSiteUrl()
+    {
+        $php_self = isset($_SERVER['PHP_SELF']) ? $_SERVER['PHP_SELF'] : "";
+        $dirname  = dirname($php_self);
+        if ($dirname == "/" || $dirname == "\\")
+            $dirname = "";
+        $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on") ? "https://" : "http://";
+        $siteurl  = $protocol . $_SERVER['HTTP_HOST'] . $dirname;
+        if (substr($siteurl, -1) != "/")
+            $siteurl .= "/";
+        return $siteurl;
+    }
 
     function get_file($recordvalues, $recordkey)
     {
-        $php_self = isset($_SERVER['PHP_SELF']) ? $_SERVER['PHP_SELF'] : "";
-        $dirname = dirname($php_self);
-        if ($dirname == "/" || $dirname == "\\")
-            $dirname = "";
-        $protocol = "http://";
-        if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on")
-            $protocol = "https://";
-        $siteurl = "$protocol" . $_SERVER['HTTP_HOST'] . $dirname;
-        if (substr($siteurl, strlen($siteurl) - 1, 1) != "/")
-        {
-            $siteurl = $siteurl . "/";
-        }
         $file = $this->getFilePath($recordvalues, $recordkey);
-        if ($file && $file[0] == "?")
-        {
-            return "$siteurl" . $file;
-        }
-
-        if ($file && file_exists($file))
-        {
-            return "$siteurl" . $file;
-        }
+        if ($file && ($file[0] == "?" || file_exists($file)))
+            return $this->_buildSiteUrl() . $file;
         return false;
     }
 
     function get_thumb($recordvalues, $recordkey)
     {
         $file = $this->getThumbPath($recordvalues, $recordkey);
-
         if ($file && file_exists($file))
-        {
-            $php_self = isset($_SERVER['PHP_SELF']) ? $_SERVER['PHP_SELF'] : "";
-            $dirname = dirname($php_self);
-            if ($dirname == "/" || $dirname == "\\")
-                $dirname = "";
-            $protocol = "http://";
-            if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on")
-                $protocol = "https://";
-            $siteurl = "$protocol" . $_SERVER['HTTP_HOST'] . $dirname;
-            if (substr($siteurl, strlen($siteurl) - 1, 1) != "/")
-            {
-                $siteurl = $siteurl . "/";
-            }
-            return "$siteurl" . $file;
-        }
+            return $this->_buildSiteUrl() . $file;
         return false;
     }
 
@@ -486,7 +468,7 @@ class XMETATable extends stdClass
         $_FILES[$key]['name'] = $filename;
     }
 
-    //-----metodi del driver---------------->
+    //-----driver methods (delegated)---------------->
     function GetNumRecords($restr = null)
     {
         return $this->driverclass ? $this->driverclass->GetNumRecords($restr) : null;
@@ -622,7 +604,7 @@ class XMETATable extends stdClass
         return $this->UpdateRecordBypk($values, $this->primarykey, $unirecid);
     }
 
-    //-----metodi del driver----------------<
+    //-----driver methods (end)----------------<
     function FindFolderTable($oldvalues)
     {
 
@@ -640,14 +622,13 @@ class XMETATable extends stdClass
         $path = realpath($this->path);
         $found = false;
         $notexists = false;
-        //-----------------first folder---------------------------------------->
+        // Fast path: record is in the default (first) folder — avoids glob scan
         $oldfileimage = "$path/$databasename/$dirtable_oldvalue/$id";
-        //dprint_r($oldfileimage);
         if (file_exists($oldfileimage))
         {
             return $dirtable_oldvalue;
         }
-        //-----------------first folder----------------------------------------<
+        // Slow path: table is sharded across numbered subfolders (.1, .2, …)
         $i = 1;
         $ret = $dirtable_oldvalue;
         $max = count(glob("$path/$databasename/*"));
@@ -704,7 +685,7 @@ class XMETATable extends stdClass
         $tablename = $this->tablename;
         $path = realpath($this->path);
         $newvalues = $values;
-        //----gestione campi d tipo FILES o IMAGE
+        //---- handle FILE and IMAGE type fields
         if (is_array($this->primarykey) || !isset($newvalues[$this->primarykey]))
             return;
         $unirecid = $newvalues[$this->primarykey];
@@ -751,18 +732,14 @@ class XMETATable extends stdClass
             $type = isset($this->fields[$key]) ? $this->fields[$key] : null;
             if (isset($type->type) && ($type->type == 'file' || $type->type == 'image'))
             {
-                //cancello i vecchi record se esiste il nuovo
+                // delete old file if a new one is being uploaded
                 $dirtable_oldvalue = false;
                 if (isset($values[$this->primarykey]))
                 {
 
-                    if (isset($_FILES[$key]['tmp_name']) && $_FILES[$key]['tmp_name'] != "" && $oldvalues != null && isset($values[$key])) // se e' un aggiornamento
+                    if (isset($_FILES[$key]['tmp_name']) && $_FILES[$key]['tmp_name'] != "" && $oldvalues != null && isset($values[$key])) // update operation
                     {
-                        //find folder--->
-                        $dirtable_oldvalue = $this->FindFolderTable($values);
-                        if ($dirtable_oldvalue == false)
-                            $dirtable_oldvalue = $tablename;
-                        //find folder---<
+                        $dirtable_oldvalue = $this->FindFolderTable($values) ?: $tablename;
                     }
                     if (!empty($values[$this->primarykey]) && !empty($oldvalues[$key]))
                     {
@@ -806,15 +783,13 @@ class XMETATable extends stdClass
                 if (isset($_FILES[$key]['tmp_name']) && $_FILES[$key]['tmp_name'] != "")
                 {
                     $name_clean = $_FILES["$key"]['name'];
-                    if (ini_get('magic_quotes_gpc') == 1)
-                    {
-                        $name_clean = stripslashes($_FILES["$key"]['name']);
-                    }
                     $name_clean = str_replace("\\", "", $name_clean);
                     $name_clean = str_replace("/", "", $name_clean);
 
-                    //die ($name_clean);
-                    if (preg_match('/.php/is', $name_clean) || preg_match('/.php3/is', $name_clean) || preg_match('/.php4/is', $name_clean) || preg_match('/.php5/is', $name_clean) || preg_match('/.phtml/is', $name_clean))
+                    // Block server-side execution extensions anywhere in the filename
+                    // (handles double-extension attacks like file.php.jpg).
+                    // Dot is escaped to prevent false positives (e.g. 'xphp').
+                    if (preg_match('/\.(php[0-9]?|phtml|phar|shtml|pl|cgi|sh|py)(\.|$)/i', $name_clean))
                     {
                         touch("$path/$databasename/$dirtable_new/$unirecid/$key/" . $name_clean);
                     }
@@ -841,8 +816,8 @@ class XMETATable extends stdClass
                                 mkdir("$path/$databasename/$dirtable_new/$unirecid/$key");
                             }
 
-                            //workarround: alla insert non funziona move_uploaded_file
-                            //se elimino il file temporaneo non funziona nemmeno copy  
+                            // workaround: on insert, move_uploaded_file fails;
+                            // deleting the temp file also breaks copy
                             if ($oldvalues)
                             {
                                 move_uploaded_file($_FILES[$key]['tmp_name'], "$path/$databasename/$dirtable_new/$unirecid/$key/" . $name_clean);
@@ -871,14 +846,14 @@ class XMETATable extends stdClass
                 }
             }
         }
-        //---------------- creazione anteprime per le immagini ----------------------
+        //---------------- generate thumbnails for image fields ----------------------
 
         foreach ($this->fields as $field)
         {
             switch ($field->type)
             {
                 case "image":
-                    if (isset($values[$field->name]) && $values[$field->name] != "") // se il campo e' stato aggiornato
+                    if (isset($values[$field->name]) && $values[$field->name] != "") // field was updated
                     {
                         $dirtable = $dirtable_new;
                         if ($this->pathdata)
