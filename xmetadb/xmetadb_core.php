@@ -8,6 +8,33 @@ include_once __DIR__ . "/XMETATable.php";
  * @package xmetadb
  *
  */
+
+// ---------------------------------------------------------------------------
+// Standalone stubs — only defined when xmetadb is used outside a CMS
+// framework that already provides these functions.
+// ---------------------------------------------------------------------------
+if (!function_exists('FN_GetParam')) {
+    /**
+     * Retrieve a value from a variable array (default: $_REQUEST).
+     * Used by XMETATable::sendFileToClient() to read HTTP parameters.
+     */
+    function FN_GetParam($key, $var = false, $type = '') {
+        if ($var === false) { $var = isset($_REQUEST) ? $_REQUEST : []; }
+        return isset($var[$key]) ? $var[$key] : null;
+    }
+}
+if (!function_exists('FN_SaveFile')) {
+    /** Send a file to the browser as a download. */
+    function FN_SaveFile($data, $filename) {
+        header('Content-Disposition: attachment; filename="' . addslashes(basename($filename)) . '"');
+        header('Content-Length: ' . strlen($data));
+        echo $data;
+    }
+}
+if (!function_exists('FN_Copy')) {
+    /** Copy a file. Used by gestfiles() for file/image type fields. */
+    function FN_Copy($src, $dst) { return copy($src, $dst); }
+}
 // TODO: the primary key must always be the first field in the descriptor
 define("_MAX_FILE_ACCESS_ATTEMPTS", "1000");
 define("_MAX_FILES_PER_FOLDER", "10000");
