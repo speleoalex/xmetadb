@@ -1,0 +1,23 @@
+{
+    "name": "speleoalex/xmetadb",
+    "description": "Lightweight PHP database abstraction library with filesystem XML backend and multiple SQL drivers",
+    "type": "library",
+    "license": "GPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Alessandro Vernassa",
+            "email": "speleoalex@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Xmetadb\\": "xmetadb/"
+        },
+        "files": [
+            "xmetadb/xmetadb_core.php"
+        ]
+    }
+}

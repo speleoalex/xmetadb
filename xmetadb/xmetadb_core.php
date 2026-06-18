@@ -1,4 +1,6 @@
 <?php
+use Xmetadb\XMETATable;
+
 include_once __DIR__ . "/XMETATable.php";
 
 /**
@@ -248,12 +250,12 @@ function xmetadb_create_thumb($filename, $max, $max_h = "", $max_w = "")
     $new_height = $new_width = 0;
     if (!file_exists($filename))
     {
-        echo "non esiste";
+        echo "file does not exist";
         return;
     }
     if (!getimagesize($filename))
     {
-        echo "$filename is not image ";
+        echo "$filename is not an image";
         return;
     }
     list($width, $height, $type, $attr) = getimagesize($filename);
@@ -326,8 +328,8 @@ function xmetadb_create_thumb($filename, $max, $max_h = "", $max_w = "")
             case IMAGETYPE_WBMP:
                 $source = imagecreatefromwbmp($filename);
                 break;
-            case IMG_XPM:
-                $source = imagecreatefromxpm($filename);
+            case IMAGETYPE_XBM:
+                $source = imagecreatefromxbm($filename);
                 break;
             case 6:
                 $source = xmetadb_ImageCreateFromBMP($filename);
@@ -652,9 +654,14 @@ function getxmltablefield($databasename, $tablename, $fieldname, $path = ".")
  * */
 function xmetadb_remove_dir_rec($dirtodelete)
 {
-    // Reject path traversal attempts in all common forms and null-byte injection.
-    if (strpos($dirtodelete, '..') !== false || strpos($dirtodelete, "\0") !== false)
+    if (strpos($dirtodelete, "\0") !== false)
         die("xmetadberror:xmetadb_remove_dir_rec");
+    $resolved = realpath($dirtodelete);
+    if ($resolved !== false) {
+        $dirtodelete = $resolved;
+    } elseif (strpos($dirtodelete, '..') !== false) {
+        die("xmetadberror:xmetadb_remove_dir_rec");
+    }
     if (false != ($objs = glob($dirtodelete . "/.*")))
     {
         foreach ($objs as $obj)

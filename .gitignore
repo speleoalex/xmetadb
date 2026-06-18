@@ -1,0 +1,16 @@
+# Example data generated at runtime
+examples/data/
+
+# PHP composer
+vendor/
+todo/
+composer.lock
+
+# IDE and OS
+.idea/
+
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db

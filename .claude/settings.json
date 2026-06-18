@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php tests/test_xmlphp.php)",
+      "Bash(php tests/test_sqlite3.php)",
+      "Bash(php tests/test_csv.php)",
+      "Bash(php tests/test_serialize.php)",
+      "Bash(php tests/test_database.php)",
+      "Bash(php tests/test_mysql.php)",
+      "Bash(php tests/run_all.php)",
+      "Bash(php -r ' *)"
+    ]
+  }
+}
