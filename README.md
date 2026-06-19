@@ -77,7 +77,7 @@ $tasks->DelRecord($r['id']);
 
 ```php
 createxmldatabase($name, $path)                // create database directory
-createxmltable($db, $table, $fields, $path)   // create table descriptor + data directory
+createxmltable($db, $table, $fields, $path, $options)  // create table (see Switching drivers / Data storage)
 xmldatabaseexists($db, $path)                  // bool
 xmltableexists($db, $table, $path)             // bool
 addxmltablefield($db, $table, $field, $path)   // add or update a field definition
@@ -196,18 +196,60 @@ xmetadb/
 
 ## Data storage (xmlphp driver)
 
-Each database is a directory; each table is a `.php` descriptor file plus a data subdirectory:
+Each database is a directory; each table is a `.php` descriptor file plus a data subdirectory.  
+The `xmlphp` driver supports two storage layouts, chosen when the table is created:
+
+### Multi-file mode (default)
+
+One XML file per record. Suited for tables with many rows or concurrent writes.
 
 ```
 data/
     myapp/
         tasks.php          ← table descriptor (field definitions, driver)
         tasks/
-            1.php          ← one file per record (or per index group)
-            2.php
+            1.php          ← record id=1
+            2.php          ← record id=2
 ```
 
-Files start with `<?php exit(0);?>` to prevent direct web access.
+```php
+createxmltable('myapp', 'tasks', $fields, $db_path);  // default: one file per record
+```
+
+### Single-file mode
+
+All records stored in one file inside the table directory. Suited for small, rarely written tables where a single-file layout is preferable.
+
+```
+data/
+    myapp/
+        tasks.php          ← table descriptor (includes <filename>allrecords</filename>)
+        tasks/
+            allrecords.php ← all records in one file
+```
+
+```php
+createxmltable('myapp', 'tasks', $fields, $db_path, 'allrecords');
+```
+
+Pass the base name (without `.php`) as the fifth argument. The descriptor stores it as `<filename>allrecords</filename>` and all inserts and updates target that single file.
+
+### File and image fields
+
+For `file` and `image` field types, uploaded files are always stored in per-record subdirectories regardless of the storage mode:
+
+```
+tasks/
+    allrecords.php         ← all record XML (single-file mode)
+    1/                     ← attachments for record id=1
+        photo/
+            avatar.jpg
+    2/
+        photo/
+            avatar.jpg
+```
+
+All files start with `<?php exit(0);?>` to prevent direct web access.
 
 ## License
 
