@@ -218,6 +218,48 @@ $low = $sql->Query("SELECT * FROM $tbl WHERE stock > 100");
 $names = array_column((array)$low, 'name');
 $t->notOk(in_array('Eggplant', $names), 'Eggplant (stock=60) NOT returned by stock > 100 (numeric fix)');
 
+// ── WHERE AND ────────────────────────────────────────────────────────────────
+$t->section('WHERE AND');
+
+// State: Apple(fruit,100), Banana(fruit,200), Carrot(veggie,150),
+//        Daikon(veggie,80), Eggplant(veggie,60), Grape red(fruit,70)
+$rows = $sql->Query("SELECT * FROM $tbl WHERE category = 'veggie' AND stock > 100");
+$t->ok(is_array($rows), 'WHERE category=veggie AND stock>100 returns array');
+// Only Carrot qualifies (stock=150); Daikon=80 and Eggplant=60 do not
+$t->cnt(1, $rows, 'WHERE AND: exactly 1 record matches');
+$t->eq('Carrot', $rows[0]['name'], 'WHERE AND: matched record is Carrot');
+
+$rows = $sql->Query("SELECT * FROM $tbl WHERE category = 'fruit' AND stock > 100");
+// Apple=100 (not > 100), Banana=200 ✓, Grape red=70 ✗ → 1 match
+$t->cnt(1, $rows, 'WHERE fruit AND stock>100 returns 1 record (Banana)');
+$t->eq('Banana', $rows[0]['name'], 'WHERE AND: matched record is Banana (stock=200)');
+
+// ── WHERE OR ─────────────────────────────────────────────────────────────────
+$t->section('WHERE OR');
+
+$rows = $sql->Query("SELECT * FROM $tbl WHERE stock > 150 OR stock < 70");
+$t->ok(is_array($rows), 'WHERE stock>150 OR stock<70 returns array');
+// Banana=200 ✓, Eggplant=60 ✓ → 2 matches
+$t->cnt(2, $rows, 'WHERE OR: 2 records match (Banana and Eggplant)');
+$names = array_column($rows, 'name');
+$t->ok(in_array('Banana',   $names), 'WHERE OR: Banana (200) included');
+$t->ok(in_array('Eggplant', $names), 'WHERE OR: Eggplant (60) included');
+
+// ── WHERE <> (not equal) ─────────────────────────────────────────────────────
+$t->section('WHERE <> (not equal)');
+
+$rows = $sql->Query("SELECT * FROM $tbl WHERE stock <> 100");
+$t->ok(is_array($rows), 'WHERE stock <> 100 returns array');
+// Apple has stock=100, all others differ → 5 records
+$t->cnt(5, $rows, 'WHERE stock<>100 returns 5 records (all except Apple)');
+$names = array_column($rows, 'name');
+$t->notOk(in_array('Apple', $names), 'WHERE <> excludes Apple (stock=100)');
+
+$rows = $sql->Query("SELECT * FROM $tbl WHERE category <> 'fruit'");
+$t->ok(is_array($rows), 'WHERE category <> fruit returns array');
+// 3 veggies: Carrot, Daikon, Eggplant
+$t->cnt(3, $rows, 'WHERE category<>fruit returns 3 veggie records');
+
 // ── Teardown ──────────────────────────────────────────────────────────────────
 xmetadb_remove_dir_rec($tmpdir);
 

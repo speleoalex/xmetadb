@@ -103,5 +103,114 @@ $table->Truncate();
 $t->eq(0, $table->GetNumRecords(), 'After Truncate, record count is 0');
 $t->notOk(file_exists(dirname($docPath2)), 'Record directory removed after Truncate');
 
+// ── SINGLE-FILE STORAGE MODE ─────────────────────────────────────────────────
+// Same file/image operations but with a descriptor that stores all record XML
+// in one file (singlefilename option) instead of one file per record.
+
+$t->section('SINGLE-FILE STORAGE — SETUP');
+
+$db2  = 'testdb2';
+$tbl2 = 'docs_sf';
+
+createxmldatabase($db2, $tmpdir);
+$fields2 = [
+    ['name' => 'id',    'primarykey' => '1', 'type' => 'int',     'extra' => 'autoincrement'],
+    ['name' => 'title', 'primarykey' => '0', 'type' => 'varchar'],
+    ['name' => 'doc',   'primarykey' => '0', 'type' => 'file'],
+    ['name' => 'img',   'primarykey' => '0', 'type' => 'image'],
+];
+// 'allrecords' (no .php) → descriptor <filename>allrecords</filename>
+// → all record XML goes to {table_dir}/allrecords.php
+createxmltable($db2, $tbl2, $fields2, $tmpdir, 'allrecords');
+$sfTable = xmetadb_table($db2, $tbl2, $tmpdir);
+$t->ok(is_object($sfTable), 'Single-file table created and loaded');
+
+$singleFile = "$tmpdir/$db2/$tbl2/allrecords.php";
+
+$t->section('SINGLE-FILE: INSERT WITH FILES');
+
+$sfTable->SetFile('doc', "$srcDir/report.pdf", 'report.pdf');
+$sfTable->SetFile('img', "$srcDir/photo.jpg",  'photo.jpg');
+$sf1 = $sfTable->InsertRecord([
+    'title' => 'SF Report 1',
+    'doc'   => 'report.pdf',
+    'img'   => 'photo.jpg',
+]);
+$t->ok(is_array($sf1),            'Single-file: InsertRecord returns array');
+$t->eq('1', (string)$sf1['id'],   'Single-file: first record id = 1');
+$t->ok(file_exists($singleFile),  'Single-file: all records written to allrecords.php');
+
+$sfTable->SetFile('doc', "$srcDir/report.pdf", 'report2.pdf');
+$sf2 = $sfTable->InsertRecord([
+    'title' => 'SF Report 2',
+    'doc'   => 'report2.pdf',
+]);
+$t->eq('2', (string)$sf2['id'],   'Single-file: second record id = 2');
+// Both records must still be in the same single file (not a new file per record)
+$t->ok(file_exists($singleFile),  'Single-file: still one file after second insert');
+$t->notOk(file_exists("$tmpdir/$db2/$tbl2/1.php"), 'Single-file: no per-record 1.php file created');
+$t->notOk(file_exists("$tmpdir/$db2/$tbl2/2.php"), 'Single-file: no per-record 2.php file created');
+
+$t->section('SINGLE-FILE: GET RECORDS');
+
+$sfAll = $sfTable->GetRecords();
+$t->cnt(2, $sfAll, 'Single-file: GetRecords returns both records');
+
+$sfRec1 = $sfTable->GetRecordByPrimaryKey('1');
+$t->ok(is_array($sfRec1),               'Single-file: GetRecordByPrimaryKey(1) returns array');
+$t->eq('SF Report 1', $sfRec1['title'], 'Single-file: record 1 has correct title');
+
+$sfRec2 = $sfTable->GetRecordByPrimaryKey('2');
+$t->ok(is_array($sfRec2),               'Single-file: GetRecordByPrimaryKey(2) returns array');
+$t->eq('SF Report 2', $sfRec2['title'], 'Single-file: record 2 has correct title');
+
+$t->section('SINGLE-FILE: FILES ON DISK');
+
+$sfDoc1 = $sfTable->getFilePath($sf1, 'doc');
+$sfImg1 = $sfTable->getFilePath($sf1, 'img');
+$sfDoc2 = $sfTable->getFilePath($sf2, 'doc');
+$t->ok($sfDoc1 !== false,                          'Single-file: getFilePath(doc) returns a path');
+$t->ok(file_exists($sfDoc1),                       'Single-file: doc file exists on disk');
+$t->ok(file_exists($sfImg1),                       'Single-file: img file exists on disk');
+$t->ok(file_exists($sfDoc2),                       'Single-file: second record doc exists on disk');
+$t->eq('fake pdf content', file_get_contents($sfDoc1), 'Single-file: doc content preserved');
+
+$t->section('SINGLE-FILE: UPDATE');
+
+file_put_contents("$srcDir/report-v2.pdf", "updated v2 content");
+$sfTable->SetFile('doc', "$srcDir/report-v2.pdf", 'report-v2.pdf');
+$sfUpd = $sfTable->UpdateRecord([
+    'id'    => '1',
+    'title' => 'SF Report 1 Updated',
+    'doc'   => 'report-v2.pdf',
+]);
+$t->ok(is_array($sfUpd), 'Single-file: UpdateRecord returns array');
+$sfNewDoc1 = $sfTable->getFilePath($sfUpd, 'doc');
+$t->ok(file_exists($sfNewDoc1),                          'Single-file: updated file exists on disk');
+$t->eq('updated v2 content', file_get_contents($sfNewDoc1), 'Single-file: updated content correct');
+$t->notOk(file_exists($sfDoc1),                          'Single-file: old file removed after update');
+
+$sfChk = $sfTable->GetRecordByPrimaryKey('1');
+$t->eq('SF Report 1 Updated', $sfChk['title'], 'Single-file: updated title persisted');
+
+$t->section('SINGLE-FILE: DELETE');
+
+$sfDel = $sfTable->DelRecord('1');
+$t->ok($sfDel, 'Single-file: DelRecord(1) returns true');
+$t->eq(1, $sfTable->GetNumRecords(), 'Single-file: record count = 1 after delete');
+$t->notOk($sfTable->GetRecordByPrimaryKey('1'), 'Single-file: deleted record not retrievable');
+$t->notOk(file_exists($sfNewDoc1), 'Single-file: doc file removed after delete');
+$t->ok(file_exists($sfDoc2),       'Single-file: other record file still present');
+
+$t->section('SINGLE-FILE: TRUNCATE');
+
+$sfTable->Truncate();
+$t->eq(0, $sfTable->GetNumRecords(), 'Single-file: GetNumRecords = 0 after Truncate');
+
+$sfFresh = $sfTable->InsertRecord(['title' => 'After Truncate']);
+$t->ok(is_array($sfFresh),            'Single-file: Insert after Truncate succeeds');
+$t->eq('1', (string)$sfFresh['id'],   'Single-file: autoincrement restarts at 1 after Truncate');
+$t->eq(1, $sfTable->GetNumRecords(),  'Single-file: record count = 1 after Truncate + insert');
+
 xmetadb_remove_dir_rec($tmpdir);
 exit($t->summary('File/Image Fields') ? 0 : 1);

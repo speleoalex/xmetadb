@@ -136,6 +136,36 @@ $t->eq(4, $table->GetNumRecords(), 'Record count = 4 after delete (5 - 1)');
 $gone = $table->GetRecordByPrimaryKey('2');
 $t->notOk($gone, 'Deleted record no longer retrievable');
 
+// ── ORDER BY AND PAGINATION ──────────────────────────────────────────────────
+// At this point 4 records remain: Alicia(1), Charlie(3), Dante(4), She said...(5)
+
+$t->section('ORDER BY');
+
+$asc = $table->GetRecords(false, false, false, 'name');
+$t->ok(is_array($asc),              'ORDER BY name returns array');
+$t->eq('Alicia', $asc[0]['name'],   'ORDER BY name ASC: first = Alicia');
+$t->eq('Charlie', $asc[1]['name'],  'ORDER BY name ASC: second = Charlie');
+
+$desc = $table->GetRecords(false, false, false, 'name', true);
+$t->ok(is_array($desc),             'ORDER BY name DESC returns array');
+// Lexicographic: 'She said "hello"' > 'Dante, Alighieri' > 'Charlie' > 'Alicia'
+$t->eq('Alicia', $desc[3]['name'],  'ORDER BY name DESC: last = Alicia');
+
+$t->section('PAGINATION');
+
+$page1 = $table->GetRecords(false, 1, 2, 'name');
+$t->cnt(2, $page1, 'Pagination min=1 length=2 returns 2 records');
+$t->eq('Alicia', $page1[0]['name'],  'Page 1 item 1 = Alicia (sorted by name)');
+$t->eq('Charlie', $page1[1]['name'], 'Page 1 item 2 = Charlie');
+
+$page2 = $table->GetRecords(false, 3, 2, 'name');
+$t->cnt(2, $page2, 'Pagination min=3 length=2 returns 2 records');
+
+// Ensure the two pages contain distinct records (no duplicates)
+$names1 = array_column($page1, 'name');
+$names2 = array_column($page2, 'name');
+$t->cnt(0, array_intersect($names1, $names2), 'Pages 1 and 2 have no overlapping records');
+
 // ── TRUNCATE ─────────────────────────────────────────────────────────────────
 $t->section('TRUNCATE');
 

@@ -120,6 +120,38 @@ $t->notOk(
     'Serialized file 2.s.php removed from disk after delete'
 );
 
+// ── ORDER BY AND PAGINATION ──────────────────────────────────────────────────
+$t->section('ORDER BY');
+
+// Insert an extra record so we have 4 total with varied names
+$r4 = $table->InsertRecord(['name' => 'Avocado', 'value' => '2.00', 'qty' => '3']);
+$t->ok(is_array($r4), 'Insert Avocado for sorting tests');
+
+// Still 4 records: Green Apple (id=1), Cherry (id=3), A&B... (id=4), Avocado (id=5)
+$asc = $table->GetRecords(false, false, false, 'name');
+$t->ok(is_array($asc),                   'ORDER BY name returns array');
+$t->eq('A&B <C> "D"', $asc[0]['name'],   'ORDER BY name ASC: first = A&B (lowest ASCII)');
+$t->eq('Avocado',      $asc[1]['name'],   'ORDER BY name ASC: second = Avocado');
+
+$desc = $table->GetRecords(false, false, false, 'name', true);
+$t->eq('Green Apple', $desc[0]['name'],   'ORDER BY name DESC: first = Green Apple');
+
+$byValue = $table->GetRecords(false, false, false, 'value');
+$t->ok(is_array($byValue),               'ORDER BY value returns array');
+$t->eq('0', $byValue[0]['value'],        'ORDER BY value ASC: first has value=0');
+
+$t->section('PAGINATION');
+
+$page1 = $table->GetRecords(false, 1, 2, 'name');
+$t->cnt(2, $page1, 'Pagination min=1 length=2 returns 2 records');
+
+$page2 = $table->GetRecords(false, 3, 2, 'name');
+$t->cnt(2, $page2, 'Pagination min=3 length=2 returns 2 records');
+
+// The two pages together must cover all 4 records (no overlap, no gap)
+$allNames = array_map(fn($r) => $r['name'], array_merge($page1, $page2));
+$t->cnt(4, $allNames, 'Both pages together cover all 4 records');
+
 // ── TRUNCATE ─────────────────────────────────────────────────────────────────
 $t->section('TRUNCATE');
 
@@ -127,7 +159,8 @@ $table->Truncate();
 $t->eq(0, $table->GetNumRecords(), 'GetNumRecords() = 0 after Truncate');
 
 $rNew = $table->InsertRecord(['name' => 'Fresh', 'value' => '0', 'qty' => '1']);
-$t->ok(is_array($rNew), 'Insert after Truncate succeeds');
+$t->ok(is_array($rNew),           'Insert after Truncate succeeds');
+$t->eq('1', (string)$rNew['id'], 'Autoincrement restarts at 1 after Truncate');
 
 // ── Teardown ──────────────────────────────────────────────────────────────────
 xmetadb_remove_dir_rec($tmpdir);
